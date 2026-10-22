@@ -1,0 +1,6 @@
+{
+  "name": "Aviator Pro - Authoritative Crash Game & Admin Suite",
+  "description": "Backend-authoritative Aviator crash game with real-time WebSocket multiplier engine, transparent 2.00x limit rules, demo-credit ledger, Telegram bot integration, and protected admin operations suite.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
