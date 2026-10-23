@@ -56,7 +56,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         handlePlaceBetDirect();
       } else {
         setQueuedNextRound(false);
-        setErrorMessage('Insufficient demo credits for queued bet');
+        setErrorMessage('Insufficient balance for queued bet');
       }
     }
   }, [roundState, autoBetEnabled, queuedNextRound, activeBet]);
@@ -73,7 +73,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
   const handlePlaceBetDirect = async () => {
     if (amount > userBalance) {
-      setErrorMessage('Insufficient demo credits');
+      setErrorMessage('Insufficient balance. Please deposit funds.');
       return;
     }
     try {

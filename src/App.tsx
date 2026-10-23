@@ -8,6 +8,7 @@ import { RulesModal } from './components/RulesModal.js';
 import { ProvablyFairModal } from './components/ProvablyFairModal.js';
 import { AuthModal } from './components/AuthModal.js';
 import { AdminDashboard } from './components/AdminDashboard.js';
+import { WalletModal } from './components/WalletModal.js';
 import { api } from './utils/api.js';
 import { sounds } from './utils/sound.js';
 import {
@@ -42,6 +43,7 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
   const [selectedFairRound, setSelectedFairRound] = useState<GameRound | null>(null);
 
   const activeRoundRef = useRef<GameRound | null>(null);
@@ -61,14 +63,6 @@ export default function App() {
         if (token) {
           const me = await api.getMe();
           setUser(me.user);
-        } else {
-          // Auto login default demo pilot for immediate seamless evaluation
-          try {
-            const loginRes = await api.login('pilot', 'DemoPilot123!');
-            setUser(loginRes.user);
-          } catch {
-            // Manual sign-in available
-          }
         }
       } catch (err) {
         console.warn('Initial session check:', err);
@@ -328,20 +322,6 @@ export default function App() {
     setUser((prev) => (prev ? { ...prev, balance: res.newBalance } : null));
   };
 
-  const handleReloadCredits = async () => {
-    if (!user) {
-      setAuthOpen(true);
-      return;
-    }
-    try {
-      sounds.playClick();
-      const res = await api.reloadDemoCredits();
-      setUser((prev) => (prev ? { ...prev, balance: res.newBalance } : null));
-    } catch (err: any) {
-      alert(err.message || 'Failed to reload credits');
-    }
-  };
-
   const handleLogout = () => {
     api.logout();
     setUser(null);
@@ -360,7 +340,13 @@ export default function App() {
         onOpenAuth={() => setAuthOpen(true)}
         onOpenAdmin={() => setAdminOpen(true)}
         onOpenProvablyFair={() => setSelectedFairRound(recentRounds[0] || activeRound)}
-        onReloadCredits={handleReloadCredits}
+        onOpenWallet={() => {
+          if (!user) {
+            setAuthOpen(true);
+          } else {
+            setWalletOpen(true);
+          }
+        }}
         onLogout={handleLogout}
       />
 
@@ -434,7 +420,7 @@ export default function App() {
               Documented Rules
             </button>
             <span>•</span>
-            <span className="text-amber-500/80">Demo Credits Only</span>
+            <span className="text-emerald-400/90 font-medium">Authoritative UPI & Ledger Active</span>
           </div>
         </div>
       </main>
@@ -462,6 +448,16 @@ export default function App() {
         isOpen={adminOpen}
         onClose={() => setAdminOpen(false)}
         currentUser={user}
+      />
+
+      <WalletModal
+        isOpen={walletOpen}
+        onClose={() => setWalletOpen(false)}
+        user={user}
+        config={config}
+        onBalanceUpdated={(newBal) => {
+          setUser((prev) => (prev ? { ...prev, balance: newBal } : null));
+        }}
       />
     </div>
   );

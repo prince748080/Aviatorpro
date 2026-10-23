@@ -350,10 +350,12 @@ export class GameEngine {
       roundId: this.currentRound.id,
       userId,
       username,
-      amount,
+      amountSubunits: Math.round(amount * 100),
+      amount: Number(amount.toFixed(2)),
       autoCashoutMultiplier,
       status: 'PLACED',
       cashedMultiplier: null,
+      cashedAmountSubunits: null,
       cashedAmount: null,
       placedAt: Date.now(),
       cashedAt: null,
@@ -454,12 +456,14 @@ export class GameEngine {
     bet.status = 'CASHED_OUT';
     bet.cashedMultiplier = effectiveMultiplier;
     bet.cashedAmount = cashedAmount;
+    bet.cashedAmountSubunits = Math.round(cashedAmount * 100);
     bet.cashedAt = Date.now();
 
     db.updateBet(betId, {
       status: 'CASHED_OUT',
       cashedMultiplier: effectiveMultiplier,
       cashedAmount,
+      cashedAmountSubunits: bet.cashedAmountSubunits,
       cashedAt: bet.cashedAt,
     });
 

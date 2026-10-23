@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plane, Volume2, VolumeX, Shield, BookOpen, RefreshCw, LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { Plane, Volume2, VolumeX, Shield, BookOpen, LogIn, LogOut, Wallet, Plus, ArrowUpRight, Send } from 'lucide-react';
 import { User, GameConfig } from '../types/index.js';
 import { sounds } from '../utils/sound.js';
 
@@ -11,7 +11,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
   onOpenProvablyFair: () => void;
-  onReloadCredits: () => void;
+  onOpenWallet: () => void;
   onLogout: () => void;
 }
 
@@ -23,7 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenAdmin,
   onOpenProvablyFair,
-  onReloadCredits,
+  onOpenWallet,
   onLogout,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sounds.getMuted());
@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
                     }`}
                   />
-                  <span className="hidden sm:inline">{connected ? 'Server Live' : 'Disconnected'}</span>
+                  <span className="hidden sm:inline">{connected ? 'Server Live' : 'Connecting'}</span>
                 </span>
                 <span className="text-zinc-600">•</span>
                 <span className="text-amber-400 font-semibold tracking-wide">
@@ -71,6 +71,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Telegram Bot Link */}
+          <a
+            href="https://t.me/aviatorprince0001_bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#229ED9]/15 hover:bg-[#229ED9]/25 text-[#229ED9] hover:text-[#52bbf0] text-xs font-semibold border border-[#229ED9]/35 transition cursor-pointer shadow-sm"
+            title="Open Telegram Bot (@aviatorprince0001_bot)"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Bot</span>
+          </a>
+
           {/* Rules & Transparency Button */}
           <button
             onClick={onOpenRules}
@@ -100,25 +112,36 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isMuted ? <VolumeX className="w-4 h-4 text-zinc-500" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
           </button>
 
-          {/* User Demo Balance & Account */}
+          {/* User Account & Real Balance */}
           {user ? (
             <div className="flex items-center gap-2 bg-[#171922] border border-[#2b2f3d] rounded-xl p-1 pl-3 shadow-inner">
-              <div className="flex flex-col text-right">
-                <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Demo Credits
+              <div className="flex flex-col text-right cursor-pointer" onClick={onOpenWallet}>
+                <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold flex items-center justify-end gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Balance
                 </span>
                 <span className="font-extrabold text-sm sm:text-base text-emerald-400 font-mono">
-                  {user.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₹{user.balance.toFixed(2)}
                 </span>
               </div>
 
-              {/* Reload Demo Credits */}
+              {/* Deposit Quick Action */}
               <button
-                onClick={onReloadCredits}
-                className="p-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 transition cursor-pointer"
-                title="Reload +1,000 Free Demo Credits"
+                onClick={onOpenWallet}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-500/40 transition cursor-pointer"
+                title="Deposit Funds via UPI"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Deposit</span>
+              </button>
+
+              {/* Withdraw Quick Action */}
+              <button
+                onClick={onOpenWallet}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#222636] hover:bg-[#2d3246] text-zinc-300 font-bold text-xs border border-[#30364d] transition cursor-pointer"
+                title="Withdraw Payout"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Withdraw</span>
               </button>
 
               {/* Admin Button if user is Admin */}
@@ -147,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-red-900/40 border border-red-400/30 transition cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In / Demo</span>
+              <span>Sign In / Register</span>
             </button>
           )}
         </div>

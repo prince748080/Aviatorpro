@@ -12,7 +12,8 @@ export interface User {
   username: string;
   role: UserRole;
   status: UserStatus;
-  balance: number;
+  balanceSubunits: number; // Stored as precise integer subunits (paise: 100 subunits = 1 INR)
+  balance: number; // Calculated balance in standard units (balanceSubunits / 100)
   createdAt: string;
   telegramId?: string | null;
   suspensionReason?: string | null;
@@ -28,6 +29,7 @@ export interface GameRound {
   publicHash: string; // SHA-256 of serverSeed for provable fairness
   status: RoundState;
   totalBets: number;
+  totalPayoutsSubunits: number;
   totalPayouts: number;
   createdAt: string;
 }
@@ -39,10 +41,12 @@ export interface Bet {
   roundId: string;
   userId: string;
   username: string;
+  amountSubunits: number;
   amount: number;
   autoCashoutMultiplier: number | null;
   status: BetStatus;
   cashedMultiplier: number | null;
+  cashedAmountSubunits: number | null;
   cashedAmount: number | null;
   placedAt: number;
   cashedAt: number | null;
@@ -60,19 +64,84 @@ export interface GameConfig {
   maxBetAmount: number;
   maxCashoutAmount: number;
   resultGenerationMethod: 'PROVABLY_FAIR_SHA256' | 'CRYPTO_RANDOM';
+  upiReceiverId: string; // Configured UPI receiver (e.g. princesuhani@fam)
+  minDepositAmount: number; // e.g. 100
+  maxDepositAmount: number; // e.g. 100000
+  minWithdrawalAmount: number; // e.g. 200
+  maxWithdrawalAmount: number; // e.g. 50000
+  zappayLinkId: string; // '3ad9a798'
+  zappayPayUrl: string; // 'https://panel.zappay.shop/pay.html?id=3ad9a798'
+  zappayApiBase: string; // 'https://zappay-beta.vercel.app'
 }
 
-export type LedgerEntryType = 'BET' | 'CASHOUT' | 'DEMO_RELOAD' | 'ADMIN_ADJUST' | 'CANCELLED_BET';
+export type LedgerEntryType =
+  | 'DEPOSIT'
+  | 'WITHDRAWAL_RESERVE'
+  | 'WITHDRAWAL_COMPLETED'
+  | 'WITHDRAWAL_REFUND'
+  | 'BET'
+  | 'CASHOUT'
+  | 'ADMIN_ADJUST'
+  | 'CANCELLED_BET';
 
 export interface WalletLedgerEntry {
   id: string;
   userId: string;
-  amount: number; // negative for bet, positive for cashout/reload
+  amountSubunits: number; // Signed integer (+ credit, - debit)
+  amount: number; // Signed float for display
+  balanceAfterSubunits: number;
   balanceAfter: number;
   type: LedgerEntryType;
-  referenceId: string; // betId or roundId
+  referenceId: string; // depositReference, withdrawalReference, betId, etc.
   idempotencyKey: string;
+  description: string;
   createdAt: string;
+}
+
+export type DepositStatus = 'PENDING_VERIFICATION' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+export interface DepositRequest {
+  id: string;
+  reference: string; // e.g. DEP-20261023-XXXX
+  userId: string;
+  username: string;
+  amountSubunits: number;
+  amount: number;
+  upiReceiverId: string;
+  userUtrReference?: string; // 12-digit UPI UTR submitted by player
+  paymentEvidenceNote?: string;
+  status: DepositStatus;
+  createdAt: string;
+  verifiedAt?: string;
+  verifiedByAdminId?: string;
+  verifiedByAdminUsername?: string;
+  rejectionReason?: string;
+  idempotencyKey: string;
+  gateway?: 'UPI_MANUAL' | 'ZAPPAY';
+  zappayLinkId?: string;
+  zappayOrderId?: string;
+  zappayPaymentUrl?: string;
+}
+
+export type WithdrawalStatus = 'PENDING_REVIEW' | 'APPROVED' | 'COMPLETED' | 'REJECTED';
+
+export interface WithdrawalRequest {
+  id: string;
+  reference: string; // e.g. WTH-20261023-XXXX
+  userId: string;
+  username: string;
+  amountSubunits: number;
+  amount: number;
+  payoutMethod: 'UPI' | 'BANK';
+  payoutTarget: string; // User UPI ID or Account Number + IFSC
+  status: WithdrawalStatus;
+  createdAt: string;
+  processedAt?: string;
+  processedByAdminId?: string;
+  processedByAdminUsername?: string;
+  payoutReference?: string; // Bank UTR or payment confirmation ref
+  rejectionReason?: string;
+  idempotencyKey: string;
 }
 
 export interface AuditLogEntry {
@@ -105,6 +174,8 @@ export interface SystemStatus {
   currentRoundId: string | null;
   currentRoundState: RoundState;
   activeBetsCount: number;
+  pendingDepositsCount: number;
+  pendingWithdrawalsCount: number;
   memoryUsageMb: number;
 }
 

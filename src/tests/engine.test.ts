@@ -33,48 +33,163 @@ describe('Aviator Pro - Authoritative Engine & Security Tests', () => {
     });
   });
 
-  describe('Demo Wallet & Ledger Atomic Accounting', () => {
+  describe('Authoritative Account Ledger & Subunit Accounting', () => {
     let testUserId: string;
 
     beforeEach(() => {
-      // Ensure clean test user in db
       const { hash, salt } = hashPassword('Secret123!');
-      const user = db.createUser(`test_pilot_${Date.now()}_${Math.random()}`, hash, salt, 'player');
+      const user = db.createUser(`test_pilot_${Date.now()}_${Math.random().toString(36).substring(7)}`, hash, salt, 'player');
       testUserId = user.id;
+    });
+
+    it('should initialize new accounts with exactly 0 subunits (no dummy balance)', () => {
+      const user = db.getUserById(testUserId);
+      expect(user).toBeDefined();
+      expect(user?.balanceSubunits).toBe(0);
+      expect(user?.balance).toBe(0.00);
     });
 
     it('should reject bet when balance is insufficient', async () => {
       const uniqueKey = `idemp_${Date.now()}_fail`;
-      // Debit more than available balance (e.g. 99999999)
-      const res = await db.debitBalanceForBet(testUserId, 99999999, 'bet_test_fail', uniqueKey);
+      const res = await db.debitBalanceForBet(testUserId, 100, 'bet_test_fail', uniqueKey);
       expect(res.success).toBe(false);
-      expect(res.error).toContain('Insufficient demo balance');
+      expect(res.error).toContain('Insufficient balance');
+    });
+
+    it('should handle deposit workflow from creation to evidence to approval and balance credit', async () => {
+      const amountINR = 500.00;
+      const utr = `UTR${Date.now()}`.padEnd(12, '0').slice(0, 12);
+
+      // 1. Create deposit request
+      const depRes = db.createDepositRequest(testUserId, amountINR, 'princesuhani@fam', `idemp_dep_${Date.now()}`);
+      expect(depRes.success).toBe(true);
+      const depReq = depRes.deposit!;
+      expect(depReq.status).toBe('PENDING_VERIFICATION');
+      expect(depReq.amountSubunits).toBe(50000);
+      expect(depReq.amount).toBe(500.00);
+
+      // 2. Submit payment evidence
+      const submitRes = db.submitDepositEvidence(depReq.id, testUserId, utr, 'Payer Name');
+      expect(submitRes.success).toBe(true);
+      expect(submitRes.deposit?.userUtrReference).toBe(utr);
+
+      // 3. Admin approves deposit
+      const approveRes = await db.approveDeposit(depReq.id, 'adm_1', 'admin', 'Verified in bank account');
+      expect(approveRes.success).toBe(true);
+      expect(approveRes.deposit?.status).toBe('APPROVED');
+
+      // 4. Verify balance was atomically credited
+      const userAfter = db.getUserById(testUserId);
+      expect(userAfter?.balanceSubunits).toBe(50000);
+      expect(userAfter?.balance).toBe(500.00);
+
+      // 5. Verify immutable ledger record
+      const ledger = db.getLedger(10, testUserId);
+      expect(ledger.length).toBeGreaterThanOrEqual(1);
+      expect(ledger[0].type).toBe('DEPOSIT');
+      expect(ledger[0].amountSubunits).toBe(50000);
+      expect(ledger[0].amount).toBe(500.00);
+    });
+
+    it('should handle withdrawal workflow with atomic reservation and completion', async () => {
+      // First fund user via approved deposit
+      const depRes = db.createDepositRequest(testUserId, 1000, 'princesuhani@fam', `idemp_fund_${Date.now()}`);
+      const depId = depRes.deposit!.id;
+      db.submitDepositEvidence(depId, testUserId, '123456789012', 'Payer');
+      await db.approveDeposit(depId, 'adm_1', 'admin', 'Funded for test');
+
+      const userFunded = db.getUserById(testUserId);
+      expect(userFunded?.balanceSubunits).toBe(100000);
+
+      // Create withdrawal request: ₹400.00
+      const wthRes = await db.createWithdrawalRequest(
+        testUserId,
+        400,
+        'UPI',
+        'test@upi',
+        `idemp_wth_${Date.now()}`
+      );
+      expect(wthRes.success).toBe(true);
+      const wthReq = wthRes.withdrawal!;
+      expect(wthReq.status).toBe('PENDING_REVIEW');
+
+      // Balance must immediately be reserved/debited to prevent double-spending
+      const userReserved = db.getUserById(testUserId);
+      expect(userReserved?.balanceSubunits).toBe(60000);
+      expect(userReserved?.balance).toBe(600.00);
+
+      // Admin completes withdrawal
+      const compRes = await db.completeWithdrawal(wthReq.id, 'adm_1', 'admin', 'BNK987654321');
+      expect(compRes.success).toBe(true);
+      expect(compRes.withdrawal?.status).toBe('COMPLETED');
+      expect(compRes.withdrawal?.payoutReference).toBe('BNK987654321');
+
+      // Balance stays debited
+      const userFinal = db.getUserById(testUserId);
+      expect(userFinal?.balanceSubunits).toBe(60000);
+    });
+
+    it('should atomically refund reserved balance if withdrawal is rejected', async () => {
+      // Fund user
+      const depRes = db.createDepositRequest(testUserId, 500, 'princesuhani@fam', `idemp_fund2_${Date.now()}`);
+      const depId = depRes.deposit!.id;
+      db.submitDepositEvidence(depId, testUserId, '999999999999', 'Payer');
+      await db.approveDeposit(depId, 'adm_1', 'admin', 'Funded for test');
+
+      // Create withdrawal: ₹200.00
+      const wthRes = await db.createWithdrawalRequest(
+        testUserId,
+        200,
+        'UPI',
+        'invalid@upi',
+        `idemp_wth2_${Date.now()}`
+      );
+      expect(wthRes.success).toBe(true);
+      const wthReq = wthRes.withdrawal!;
+
+      const userReserved = db.getUserById(testUserId);
+      expect(userReserved?.balanceSubunits).toBe(30000); // 50000 - 20000
+
+      // Admin rejects withdrawal
+      const rejRes = await db.rejectWithdrawal(wthReq.id, 'adm_1', 'admin', 'Invalid UPI ID');
+      expect(rejRes.success).toBe(true);
+      expect(rejRes.withdrawal?.status).toBe('REJECTED');
+
+      // Balance must be refunded back to ₹500.00
+      const userRefunded = db.getUserById(testUserId);
+      expect(userRefunded?.balanceSubunits).toBe(50000);
+      expect(userRefunded?.balance).toBe(500.00);
+
+      // Ledger has refund record
+      const ledger = db.getLedger(10, testUserId);
+      expect(ledger[0].type).toBe('WITHDRAWAL_REFUND');
     });
 
     it('should prevent duplicate debit on identical idempotency key', async () => {
-      const user = db.createUser(`idemp_user_${Date.now()}`, 'hash', 'salt', 'player');
-      const key = `key_${Date.now()}`;
+      // Fund user
+      const depRes = db.createDepositRequest(testUserId, 200, 'princesuhani@fam', `idemp_fund3_${Date.now()}`);
+      const depId = depRes.deposit!.id;
+      db.submitDepositEvidence(depId, testUserId, '111222333444', 'Payer');
+      await db.approveDeposit(depId, 'adm_1', 'admin', 'Funded for test');
 
-      const first = await db.debitBalanceForBet(user.id, 50, 'bet_1', key);
+      const key = `key_${Date.now()}`;
+      const first = await db.debitBalanceForBet(testUserId, 50, 'bet_1', key);
       expect(first.success).toBe(true);
 
-      const duplicate = await db.debitBalanceForBet(user.id, 50, 'bet_1', key);
+      const duplicate = await db.debitBalanceForBet(testUserId, 50, 'bet_1', key);
       expect(duplicate.success).toBe(false);
       expect(duplicate.error).toContain('Duplicate bet transaction detected');
     });
 
     it('should record every cashout in the immutable ledger', async () => {
-      const user = db.createUser(`cashout_user_${Date.now()}`, 'hash', 'salt', 'player');
       const cashoutKey = `cashout_${Date.now()}`;
-
-      const initialBal = user.balance;
       const payoutAmount = 150.0;
-      const res = await db.creditBalanceForCashout(user.id, payoutAmount, 'bet_cashout_1', cashoutKey);
+      const res = await db.creditBalanceForCashout(testUserId, payoutAmount, 'bet_cashout_1', cashoutKey);
 
       expect(res.success).toBe(true);
-      expect(res.newBalance).toBe(Number((initialBal + payoutAmount).toFixed(2)));
+      expect(res.newBalance).toBe(150.00);
 
-      const ledger = db.getLedger(10, user.id);
+      const ledger = db.getLedger(10, testUserId);
       expect(ledger[0].type).toBe('CASHOUT');
       expect(ledger[0].amount).toBe(payoutAmount);
     });
@@ -95,6 +210,7 @@ describe('Aviator Pro - Authoritative Engine & Security Tests', () => {
         username: 'testpilot',
         role: 'player' as const,
         status: 'active' as const,
+        balanceSubunits: 100000,
         balance: 1000,
         createdAt: new Date().toISOString(),
       };
@@ -111,6 +227,7 @@ describe('Aviator Pro - Authoritative Engine & Security Tests', () => {
         username: 'pilot',
         role: 'player' as const,
         status: 'active' as const,
+        balanceSubunits: 100000,
         balance: 1000,
         createdAt: new Date().toISOString(),
       };

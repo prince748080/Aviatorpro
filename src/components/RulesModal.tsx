@@ -63,13 +63,13 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, config 
             </h4>
             <ol className="list-decimal list-inside space-y-2 text-xs sm:text-sm text-zinc-300 pl-2">
               <li>
-                <strong>Place Bets:</strong> Choose your desired demo credit wager and click "Bet" during the 5-second WAITING countdown before takeoff. You can place up to two simultaneous bets on the same round.
+                <strong>Place Bets:</strong> Choose your wager in INR and click "Bet" during the 5-second WAITING countdown before takeoff. You can place up to two simultaneous bets on the same round.
               </li>
               <li>
                 <strong>Ascent &amp; Multiplier:</strong> As the red monoplane takes flight, the multiplier increases continuously according to the backend curve formula.
               </li>
               <li>
-                <strong>Cash Out:</strong> Press "Cash Out" before the plane flies away. Your demo payout equals your bet multiplied by the exact server multiplier at the moment of cash-out.
+                <strong>Cash Out:</strong> Press "Cash Out" before the plane flies away. Your payout equals your bet multiplied by the exact server multiplier at the moment of cash-out.
               </li>
               <li>
                 <strong>Crash Event:</strong> If the plane flies away before you cash out, the bet is lost.
@@ -90,15 +90,13 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, config 
             </p>
           </div>
 
-          {/* Demo Credits & Real-Money Waiver */}
+          {/* Authoritative UPI & Ledger Architecture */}
           <div className="bg-[#171a25] border border-[#272b3c] rounded-xl p-4">
-            <h4 className="text-white font-bold text-sm flex items-center gap-2 mb-1 text-amber-400">
-              <Lock className="w-4 h-4 text-amber-400" /> Demo Credits &amp; Wagering Notice
+            <h4 className="text-white font-bold text-sm flex items-center gap-2 mb-1 text-emerald-400">
+              <Lock className="w-4 h-4 text-emerald-400" /> Authoritative Account &amp; Ledger Architecture
             </h4>
             <p className="text-xs text-zinc-400">
-              This application is configured for demonstration and entertainment credits only. 
-              Real-money wagering, deposits, and withdrawals are intentionally disabled by default pending 
-              all requisite jurisdictional licensing, technical certification, and regulatory approvals.
+              Accounts start with <strong>₹0.00</strong> balance. Balance increases only through verified UPI deposits (Receiver: <code>princesuhani@fam</code>) confirmed by a 12-digit UTR reference. Payouts and withdrawals are governed by strict atomic balance reservations to prevent double-spending, and monitored 24/7 via the official Telegram Bot (@aviatorprince0001_bot).
             </p>
           </div>
 

@@ -1,4 +1,13 @@
-import { User, GameConfig, Bet, GameRound, WalletLedgerEntry, AuditLogEntry } from '../types/index.js';
+import {
+  User,
+  GameConfig,
+  Bet,
+  GameRound,
+  WalletLedgerEntry,
+  DepositRequest,
+  WithdrawalRequest,
+  AuditLogEntry,
+} from '../types/index.js';
 
 class ApiService {
   private token: string | null = null;
@@ -120,25 +129,162 @@ class ApiService {
     });
   }
 
-  // User
-  public async getWallet(): Promise<{ balance: number; currency: string; ledger: WalletLedgerEntry[] }> {
+  // User Wallet & Transactions
+  public async getWallet(): Promise<{
+    balance: number;
+    balanceSubunits: number;
+    currency: string;
+    ledger: WalletLedgerEntry[];
+    deposits: DepositRequest[];
+    withdrawals: WithdrawalRequest[];
+  }> {
     return this.request('/api/user/wallet');
-  }
-
-  public async reloadDemoCredits(): Promise<{ message: string; newBalance: number }> {
-    return this.request('/api/user/reload-demo', { method: 'POST' });
   }
 
   public async getUserBets(): Promise<{ bets: Bet[] }> {
     return this.request('/api/user/bets');
   }
 
-  // Admin
+  // Deposits
+  public async createDeposit(
+    amount: number,
+    idempotencyKey?: string
+  ): Promise<{ message: string; deposit: DepositRequest }> {
+    return this.request('/api/user/deposits', {
+      method: 'POST',
+      body: JSON.stringify({ amount, idempotencyKey }),
+    });
+  }
+
+  public async submitDepositEvidence(
+    depositId: string,
+    userUtrReference: string,
+    paymentEvidenceNote?: string
+  ): Promise<{ message: string; deposit: DepositRequest }> {
+    return this.request(`/api/user/deposits/${depositId}/evidence`, {
+      method: 'POST',
+      body: JSON.stringify({ userUtrReference, paymentEvidenceNote }),
+    });
+  }
+
+  public async getUserDeposits(): Promise<{ deposits: DepositRequest[] }> {
+    return this.request('/api/user/deposits');
+  }
+
+  // ZapPay Gateway Integration
+  public async getZapPayConfig(): Promise<{
+    linkId: string;
+    payUrl: string;
+    amount: number;
+    merchantName: string;
+    upiId: string;
+  }> {
+    return this.request('/api/user/deposits/zappay/config');
+  }
+
+  public async initiateZapPayDeposit(
+    amount?: number,
+    idempotencyKey?: string
+  ): Promise<{
+    message: string;
+    deposit: DepositRequest;
+    paymentUrl: string;
+    orderId: string;
+    amount: number;
+    directPayUrl: string;
+  }> {
+    return this.request('/api/user/deposits/zappay/initiate', {
+      method: 'POST',
+      body: JSON.stringify({ amount, idempotencyKey }),
+    });
+  }
+
+  public async checkZapPayStatus(
+    orderId: string
+  ): Promise<{
+    success: boolean;
+    status: 'pending' | 'success' | 'failed' | 'timeout';
+    credited?: boolean;
+    newBalance?: number;
+    deposit?: DepositRequest;
+  }> {
+    return this.request(`/api/user/deposits/zappay/check-status/${encodeURIComponent(orderId)}`);
+  }
+
+  // Withdrawals
+  public async createWithdrawal(
+    amount: number,
+    payoutMethod: 'UPI' | 'BANK',
+    payoutTarget: string,
+    idempotencyKey?: string
+  ): Promise<{ message: string; withdrawal: WithdrawalRequest; newBalance: number }> {
+    return this.request('/api/user/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify({ amount, payoutMethod, payoutTarget, idempotencyKey }),
+    });
+  }
+
+  public async getUserWithdrawals(): Promise<{ withdrawals: WithdrawalRequest[] }> {
+    return this.request('/api/user/withdrawals');
+  }
+
+  // Admin Dashboard
   public async getAdminOverview(): Promise<any> {
     return this.request('/api/admin/overview');
   }
 
-  public async updateConfig(updates: Partial<GameConfig>, reason: string): Promise<{ message: string; config: GameConfig }> {
+  public async getAdminDeposits(): Promise<{ deposits: DepositRequest[] }> {
+    return this.request('/api/admin/deposits');
+  }
+
+  public async approveDeposit(
+    depositId: string,
+    reason?: string
+  ): Promise<{ message: string; deposit: DepositRequest; newBalance: number }> {
+    return this.request(`/api/admin/deposits/${depositId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  public async rejectDeposit(
+    depositId: string,
+    reason: string
+  ): Promise<{ message: string; deposit: DepositRequest }> {
+    return this.request(`/api/admin/deposits/${depositId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  public async getAdminWithdrawals(): Promise<{ withdrawals: WithdrawalRequest[] }> {
+    return this.request('/api/admin/withdrawals');
+  }
+
+  public async completeWithdrawal(
+    withdrawalId: string,
+    payoutReference: string
+  ): Promise<{ message: string; withdrawal: WithdrawalRequest }> {
+    return this.request(`/api/admin/withdrawals/${withdrawalId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ payoutReference }),
+    });
+  }
+
+  public async rejectWithdrawal(
+    withdrawalId: string,
+    reason: string
+  ): Promise<{ message: string; withdrawal: WithdrawalRequest; newBalance: number }> {
+    return this.request(`/api/admin/withdrawals/${withdrawalId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  public async updateConfig(
+    updates: Partial<GameConfig>,
+    reason: string
+  ): Promise<{ message: string; config: GameConfig }> {
     return this.request('/api/admin/config', {
       method: 'POST',
       body: JSON.stringify({ updates, reason }),
