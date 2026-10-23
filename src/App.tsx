@@ -74,6 +74,14 @@ export default function App() {
       } catch (err) {
         console.warn('Initial config load:', err);
       }
+
+      // Allow direct URL query access (?admin=true) for authorized administrator
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.get('admin') === 'true' || searchParams.get('admin') === '1') {
+          setAdminOpen(true);
+        }
+      }
     };
 
     initApp();

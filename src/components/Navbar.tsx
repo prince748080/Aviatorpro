@@ -9,7 +9,7 @@ interface NavbarProps {
   connected: boolean;
   onOpenRules: () => void;
   onOpenAuth: () => void;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
   onOpenProvablyFair: () => void;
   onOpenWallet: () => void;
   onLogout: () => void;
@@ -143,18 +143,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Withdraw</span>
               </button>
-
-              {/* Admin Button if user is Admin */}
-              {user.role === 'admin' && (
-                <button
-                  onClick={onOpenAdmin}
-                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 transition cursor-pointer flex items-center gap-1"
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Admin</span>
-                </button>
-              )}
-
               {/* Logout */}
               <button
                 onClick={onLogout}

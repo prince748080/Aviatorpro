@@ -202,22 +202,69 @@ class DatabaseManager {
   }
 
   public getUserByUsername(username: string): (User & { passwordHash: string; salt: string }) | null {
+    if (!username) return null;
+    const cleanUsername = username.trim().toLowerCase();
     const found = Object.values(this.data.users).find(
-      (u) => u.username.toLowerCase() === username.toLowerCase()
+      (u) => u.username.toLowerCase() === cleanUsername
     );
     if (!found) return null;
     found.balance = Number((found.balanceSubunits / 100).toFixed(2));
     return found;
   }
 
-  public createUser(username: string, passwordHash: string, salt: string, role: User['role'] = 'player'): User {
+  public getUserByPhoneNumber(phoneNumber: string): (User & { passwordHash: string; salt: string }) | null {
+    if (!phoneNumber) return null;
+    const digitsOnly = phoneNumber.replace(/\D/g, '');
+    const found = Object.values(this.data.users).find((u) => {
+      if (!u.phoneNumber) return false;
+      const uDigits = u.phoneNumber.replace(/\D/g, '');
+      return u.phoneNumber === phoneNumber.trim() || (digitsOnly.length >= 10 && uDigits.endsWith(digitsOnly.slice(-10)));
+    });
+    if (!found) return null;
+    found.balance = Number((found.balanceSubunits / 100).toFixed(2));
+    return found;
+  }
+
+  public getUserByIdentifier(identifier: string): (User & { passwordHash: string; salt: string }) | null {
+    if (!identifier) return null;
+    const clean = identifier.trim();
+    // 1. Try direct username match
+    const byUser = this.getUserByUsername(clean);
+    if (byUser) return byUser;
+
+    // 2. Try phone number match
+    const byPhone = this.getUserByPhoneNumber(clean);
+    if (byPhone) return byPhone;
+
+    // 3. Fallback case-insensitive search across all users
+    const found = Object.values(this.data.users).find((u) => {
+      if (u.username.toLowerCase() === clean.toLowerCase()) return true;
+      if (u.phoneNumber && u.phoneNumber.toLowerCase() === clean.toLowerCase()) return true;
+      return false;
+    });
+    if (found) {
+      found.balance = Number((found.balanceSubunits / 100).toFixed(2));
+      return found;
+    }
+    return null;
+  }
+
+  public createUser(
+    username: string,
+    passwordHash: string,
+    salt: string,
+    role: User['role'] = 'player',
+    phoneNumber?: string
+  ): User {
     const id = `usr_${crypto.randomUUID().slice(0, 12)}`;
     const now = new Date().toISOString();
     // Authentic accounts start at 0 subunits until real approved deposit
     const initialSubunits = 0;
+    const cleanPhone = phoneNumber ? phoneNumber.trim() : null;
     const newUser = {
       id,
-      username,
+      username: username.trim(),
+      phoneNumber: cleanPhone,
       passwordHash,
       salt,
       role,

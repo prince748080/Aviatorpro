@@ -57,6 +57,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 const wss = new WebSocketServer({ server, path: '/ws' });
 gameEngine.attachWebSocketServer(wss);
 
+// Hook proactive Telegram notification for significant game wins (>= ₹500 or multiplier >= 1.50)
+gameEngine.setOnCashoutCallback((bet, username, multiplier, amount) => {
+  if (amount >= 500 || multiplier >= 1.50) {
+    telegramBot.notifyAdminSignificantWin(bet, username, multiplier, amount).catch((err) => {
+      console.warn('[Telegram Win Alert] Failed to send win notification:', err);
+    });
+  }
+});
+
 // ----------------------------------------------------
 // PUBLIC & HEALTH ENDPOINTS
 // ----------------------------------------------------
@@ -73,55 +82,87 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// AUTHENTICATION
+// AUTHENTICATION (PHONE NUMBER & PASSWORD REGISTRATION)
 // ----------------------------------------------------
 
 app.post('/api/auth/register', (req: Request, res: Response) => {
-  const { username, password } = req.body;
-  if (!username || typeof username !== 'string' || username.trim().length < 3) {
-    return res.status(400).json({ error: 'Username must be at least 3 characters long.' });
+  const { username, phoneNumber, password } = req.body;
+
+  // Validate phone number or username
+  const rawPhone = typeof phoneNumber === 'string' ? phoneNumber.trim() : '';
+  const digitsOnly = rawPhone.replace(/\D/g, '');
+  const rawUsername = typeof username === 'string' ? username.trim() : '';
+
+  // Registration requires either a valid phone number (>= 10 digits) or a valid username
+  if (!rawPhone && !rawUsername) {
+    return res.status(400).json({ error: 'Mobile phone number is required for registration.' });
   }
+
+  if (rawPhone && digitsOnly.length < 10) {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit mobile phone number.' });
+  }
+
   if (!password || typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
 
-  const cleanUsername = username.trim();
-  const existing = db.getUserByUsername(cleanUsername);
-  if (existing) {
-    return res.status(409).json({ error: 'Username is already taken.' });
+  // Derive pilot username if not explicitly provided
+  let effectiveUsername = rawUsername;
+  if (!effectiveUsername || effectiveUsername.length < 3) {
+    if (digitsOnly.length >= 10) {
+      effectiveUsername = `Pilot_${digitsOnly.slice(-6)}`;
+    } else {
+      effectiveUsername = `Pilot_${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+  }
+
+  // Check if account already exists with phone or username
+  if (rawPhone && db.getUserByPhoneNumber(rawPhone)) {
+    return res.status(409).json({ error: 'An account with this phone number is already registered. Please sign in.' });
+  }
+  if (db.getUserByUsername(effectiveUsername)) {
+    // If auto-generated was taken, append random suffix
+    effectiveUsername = `${effectiveUsername}_${Math.floor(100 + Math.random() * 900)}`;
   }
 
   const { hash, salt } = hashPassword(password);
-  const user = db.createUser(cleanUsername, hash, salt, 'player');
+  const user = db.createUser(effectiveUsername, hash, salt, 'player', rawPhone || undefined);
   const token = generateToken(user);
+
+  // Proactive Telegram Alert to Admin for new registration / joining
+  telegramBot.notifyAdminNewUser(user).catch((err) => {
+    console.warn('[Telegram User Alert] Failed to notify admin of new user:', err);
+  });
 
   res.status(201).json({
     user,
     token,
-    message: 'User registered successfully.',
+    message: 'Pilot account registered successfully.',
   });
 });
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required.' });
+  const { identifier, username, phoneNumber, password } = req.body;
+  const input = (identifier || phoneNumber || username || '').toString().trim();
+
+  if (!input || !password) {
+    return res.status(400).json({ error: 'Phone number or username and password are required.' });
   }
 
-  const user = db.getUserByUsername(username.trim());
+  const user = db.getUserByIdentifier(input);
   if (!user) {
-    return res.status(401).json({ error: 'Invalid username or password.' });
+    return res.status(401).json({ error: 'Invalid phone number/username or password.' });
   }
 
   if (user.status === 'suspended') {
     return res.status(403).json({
-      error: `Account suspended: ${user.suspensionReason || 'Contact support'}`,
+      error: `Account suspended: ${user.suspensionReason || 'Please contact administrator via Telegram'}`,
     });
   }
 
   const valid = verifyPassword(password, user.passwordHash, user.salt);
   if (!valid) {
-    return res.status(401).json({ error: 'Invalid username or password.' });
+    return res.status(401).json({ error: 'Invalid phone number/username or password.' });
   }
 
   const { passwordHash: _, salt: __, ...safeUser } = user;

@@ -58,19 +58,34 @@ class ApiService {
   }
 
   // Auth
-  public async login(username: string, password: string): Promise<{ user: User; token: string }> {
+  public async login(identifier: string, password: string): Promise<{ user: User; token: string }> {
+    const cleanId = (identifier || '').trim();
     const data = await this.request('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ identifier: cleanId, username: cleanId, phoneNumber: cleanId, password }),
     });
     this.setToken(data.token);
     return data;
   }
 
-  public async register(username: string, password: string): Promise<{ user: User; token: string }> {
+  public async register(
+    phoneOrParams: { phoneNumber: string; password: string; username?: string } | string,
+    passwordArg?: string,
+    usernameArg?: string
+  ): Promise<{ user: User; token: string }> {
+    let payload: { phoneNumber?: string; username?: string; password: string };
+    if (typeof phoneOrParams === 'object') {
+      payload = phoneOrParams;
+    } else {
+      payload = {
+        phoneNumber: phoneOrParams.trim(),
+        password: passwordArg || '',
+        username: usernameArg?.trim() || undefined,
+      };
+    }
     const data = await this.request('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(payload),
     });
     this.setToken(data.token);
     return data;

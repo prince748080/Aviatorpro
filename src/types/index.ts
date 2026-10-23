@@ -10,6 +10,7 @@ export type UserStatus = 'active' | 'suspended';
 export interface User {
   id: string;
   username: string;
+  phoneNumber?: string | null;
   role: UserRole;
   status: UserStatus;
   balanceSubunits: number; // Stored as precise integer subunits (paise: 100 subunits = 1 INR)

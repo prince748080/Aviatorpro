@@ -237,6 +237,70 @@ describe('Aviator Pro - Authoritative Engine & Security Tests', () => {
     });
   });
 
+  describe('Phone Number Registration & Identifier Lookup', () => {
+    it('should allow registering a user with phone number and looking up by phone or username', () => {
+      const phone = '98' + Math.floor(10000000 + Math.random() * 90000000);
+      const username = `pilot_phone_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const { hash, salt } = hashPassword('PilotPass123!');
+      const user = db.createUser(username, hash, salt, 'player', phone);
+
+      expect(user.phoneNumber).toBe(phone);
+      expect(user.username).toBe(username);
+
+      // Lookup by exact phone
+      const byPhone = db.getUserByPhoneNumber(phone);
+      expect(byPhone).toBeDefined();
+      expect(byPhone?.id).toBe(user.id);
+
+      // Lookup by formatted identifier (e.g. +91 formatted)
+      const byFormatted = db.getUserByIdentifier(`+91 ${phone.slice(0, 5)} ${phone.slice(5)}`);
+      expect(byFormatted).toBeDefined();
+      expect(byFormatted?.id).toBe(user.id);
+
+      // Lookup by username
+      const byUser = db.getUserByIdentifier(username);
+      expect(byUser).toBeDefined();
+      expect(byUser?.id).toBe(user.id);
+    });
+
+    it('should fire onCashoutCallback when cashout is executed in game engine', async () => {
+      let callbackFired = false;
+      let callbackMultiplier = 0;
+      let callbackAmount = 0;
+
+      engine.setOnCashoutCallback((bet, username, mult, amt) => {
+        callbackFired = true;
+        callbackMultiplier = mult;
+        callbackAmount = amt;
+      });
+
+      // Prepare user and balance
+      const { hash, salt } = hashPassword('Pass123!');
+      const testUser = db.createUser(`win_pilot_${Date.now()}`, hash, salt, 'player');
+      const dep = db.createDepositRequest(testUser.id, 1000, 'princesuhani@fam', `dep_${Date.now()}`);
+      await db.approveDeposit(dep.deposit!.id, 'admin', 'admin', 'Test funding');
+
+      // Setup mock round with 2.00 crash cap
+      const serverSeed = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      const publicHash = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+      const mockRound = db.createRound(2.00, serverSeed, publicHash);
+      (engine as any).currentRound = mockRound;
+      (engine as any).roundState = 'WAITING';
+
+      const betRes = await engine.placeBet(testUser.id, testUser.username, 200, null, `idemp_win_${Date.now()}`);
+      expect(betRes.success).toBe(true);
+
+      (engine as any).roundState = 'RUNNING';
+      (engine as any).currentMultiplier = 1.75;
+
+      const cashoutRes = await engine.executeCashout(betRes.bet!.id, testUser.id);
+      expect(cashoutRes.success).toBe(true);
+      expect(callbackFired).toBe(true);
+      expect(callbackMultiplier).toBe(1.75);
+      expect(callbackAmount).toBe(350);
+    });
+  });
+
   describe('Admin Configuration & Audit Trail', () => {
     it('should record audit log whenever game configuration is modified', () => {
       const reason = 'Updated round interval for test';

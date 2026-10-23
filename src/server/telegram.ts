@@ -227,15 +227,50 @@ export class TelegramBotService {
     await this.sendMessage(this.adminChatId, text, keyboard);
   }
 
+  public async notifyAdminNewUser(user: { id: string; username: string; phoneNumber?: string | null; createdAt: string; balance: number }) {
+    if (!this.adminChatId) return;
+    const timeStr = new Date(user.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const text =
+      `🎉 <b>NEW PILOT REGISTERED / JOINED</b>\n\n` +
+      `• Phone Number: <code>${user.phoneNumber || 'Not provided'}</code>\n` +
+      `• Pilot Username: <b>${user.username}</b>\n` +
+      `• User ID: <code>${user.id}</code>\n` +
+      `• Registered At: <code>${timeStr}</code>\n` +
+      `• Initial Balance: <b>₹${user.balance.toFixed(2)}</b>\n\n` +
+      `<i>Real player joined the Aviator Pro flight network.</i>`;
+
+    await this.sendMessage(this.adminChatId, text);
+  }
+
+  public async notifyAdminSignificantWin(bet: { id: string; roundId: string; amount: number }, username: string, multiplier: number, winAmount: number) {
+    if (!this.adminChatId) return;
+    const profit = winAmount - bet.amount;
+    const timeStr = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const text =
+      `🏆 <b>SIGNIFICANT GAME WIN ALERT!</b>\n\n` +
+      `• Pilot: <b>${username}</b>\n` +
+      `• Multiplier: <b>${multiplier.toFixed(2)}x</b>\n` +
+      `• Bet Staked: <b>₹${bet.amount.toFixed(2)}</b>\n` +
+      `• Payout Won: <b>₹${winAmount.toFixed(2)}</b>\n` +
+      `• Net Profit: <b>+₹${profit.toFixed(2)}</b>\n` +
+      `• Round ID: <code>${bet.roundId}</code>\n` +
+      `• Time: <code>${timeStr}</code>\n\n` +
+      `<i>Player cashed out successfully before crash point.</i>`;
+
+    await this.sendMessage(this.adminChatId, text);
+  }
+
   public async notifyAdminDepositApproved(dep: DepositRequest) {
     if (!this.adminChatId) return;
+    const isHighValue = dep.amount >= 500;
     const text =
-      `✅ <b>DEPOSIT APPROVED</b>\n\n` +
+      `${isHighValue ? '🔥 <b>HIGH-VALUE DEPOSIT CONFIRMED!</b>' : '✅ <b>DEPOSIT APPROVED & CREDITED</b>'}\n\n` +
       `• Reference: <code>${dep.reference}</code>\n` +
       `• User: <b>${dep.username}</b>\n` +
-      `• Amount: <b>₹${dep.amount.toFixed(2)}</b>\n` +
-      `• UTR: <code>${dep.userUtrReference || 'N/A'}</code>\n` +
-      `• Approved By: <i>${dep.verifiedByAdminUsername || 'Admin'}</i>\n` +
+      `• Amount: <b>₹${dep.amount.toFixed(2)}</b>${isHighValue ? ' ⭐ (HIGH-VALUE)' : ''}\n` +
+      `• Gateway: <b>${dep.gateway === 'ZAPPAY' ? '⚡ ZapPay API' : 'Direct UPI Transfer'}</b>\n` +
+      `• UTR / Order: <code>${dep.userUtrReference || dep.zappayOrderId || 'N/A'}</code>\n` +
+      `• Verified By: <i>${dep.verifiedByAdminUsername || 'Admin / ZapPay Webhook'}</i>\n` +
       `• Status: <b>CREDITED TO AUTHORITATIVE LEDGER</b>`;
 
     await this.sendMessage(this.adminChatId, text);
@@ -654,7 +689,8 @@ export class TelegramBotService {
         await this.sendMessage(chatId, `🛠 <b>Maintenance Mode:</b> ${newMode ? 'ENABLED 🔴' : 'DISABLED 🟢'}`);
         break;
 
-      case '/systemstatus':
+      case '/stats':
+      case '/systemstatus': {
         if (!isAuthorizedAdmin) {
           await this.sendMessage(chatId, '⛔ Unauthorized.');
           return;
@@ -666,15 +702,156 @@ export class TelegramBotService {
           `🖥 <b>SYSTEM ARCHITECTURE STATUS</b>\n\n` +
           `• Total Registered Users: <code>${stats.totalUsers}</code>\n` +
           `• Active Accounts: <code>${stats.activeUsers}</code>\n` +
-          `• Pending Deposits: <b>${stats.pendingDepositsCount}</b>\n` +
-          `• Pending Withdrawals: <b>${stats.pendingWithdrawalsCount}</b>\n` +
+          `• Pending Deposits: <b>${stats.pendingDepositsCount}</b> (/deposits)\n` +
+          `• Pending Withdrawals: <b>${stats.pendingWithdrawalsCount}</b> (/withdrawals)\n` +
           `• Total Approved Deposits: <b>₹${stats.totalDeposited.toLocaleString()}</b>\n` +
           `• Total Completed Withdrawals: <b>₹${stats.totalWithdrawn.toLocaleString()}</b>\n` +
           `• Completed Rounds: <code>${stats.totalRounds}</code>\n` +
+          `• Max Multiplier Cap: <b>${db.getConfig().maxMultiplier.toFixed(2)}x</b>\n` +
           `• Memory Heap: <code>${mem} MB</code>\n` +
           `• Active WS Clients: <code>${gameEngine.getConnectedClientsCount()}</code>`
         );
         break;
+      }
+
+      case '/users': {
+        if (!isAuthorizedAdmin) {
+          await this.sendMessage(chatId, '⛔ Unauthorized.');
+          return;
+        }
+        const users = db.getAllUsers();
+        if (users.length === 0) {
+          await this.sendMessage(chatId, 'ℹ️ No registered users yet.');
+          return;
+        }
+        const recent = users.slice(-15).reverse();
+        let userListText = `👥 <b>RECENT REGISTERED USERS (${recent.length}/${users.length})</b>\n\n`;
+        recent.forEach((u, idx) => {
+          const phone = u.phoneNumber || 'No phone';
+          const dt = new Date(u.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+          userListText += `${idx + 1}. <b>${u.username}</b> (${u.role})\n   📱 <code>${phone}</code> | 💰 ₹${u.balance.toFixed(2)} | 📅 ${dt}\n`;
+        });
+        await this.sendMessage(chatId, userListText);
+        break;
+      }
+
+      case '/approve': {
+        if (!isAuthorizedAdmin) {
+          await this.sendMessage(chatId, '⛔ Unauthorized.');
+          return;
+        }
+        const ref = args[0]?.trim();
+        if (!ref) {
+          await this.sendMessage(chatId, 'Usage: <code>/approve &lt;REFERENCE_OR_ID&gt; [payout_UTR]</code>');
+          return;
+        }
+        // Try deposit first
+        const dep = db.getDepositByReference(ref);
+        if (dep) {
+          const res = await db.approveDeposit(dep.id, `tg_${telegramUserId}`, telegramUsername, 'Approved via /approve');
+          if (res.success && res.deposit) {
+            await this.sendMessage(chatId, `✅ <b>Deposit Approved!</b>\nRef: <code>${res.deposit.reference}</code>\nUser: <b>${res.deposit.username}</b>\nCredited: <b>₹${res.deposit.amount.toFixed(2)}</b>\nBalance: <b>₹${res.newBalance?.toFixed(2)}</b>`);
+          } else {
+            await this.sendMessage(chatId, `❌ Failed: ${res.error}`);
+          }
+          return;
+        }
+        // Try withdrawal
+        const wth = db.getWithdrawalByReference(ref);
+        if (wth) {
+          const payoutUtr = args.slice(1).join(' ').trim() || `IMPS-${Date.now()}`;
+          const res = await db.completeWithdrawal(wth.id, `tg_${telegramUserId}`, telegramUsername, payoutUtr);
+          if (res.success && res.withdrawal) {
+            await this.sendMessage(chatId, `✅ <b>Withdrawal Completed!</b>\nRef: <code>${res.withdrawal.reference}</code>\nUser: <b>${res.withdrawal.username}</b>\nAmount: <b>₹${res.withdrawal.amount.toFixed(2)}</b>\nPayout UTR: <code>${payoutUtr}</code>`);
+          } else {
+            await this.sendMessage(chatId, `❌ Failed: ${res.error}`);
+          }
+          return;
+        }
+        await this.sendMessage(chatId, `❌ Transaction <code>${ref}</code> not found.`);
+        break;
+      }
+
+      case '/reject': {
+        if (!isAuthorizedAdmin) {
+          await this.sendMessage(chatId, '⛔ Unauthorized.');
+          return;
+        }
+        const ref = args[0]?.trim();
+        const reason = args.slice(1).join(' ').trim() || 'Declined by Administrator';
+        if (!ref) {
+          await this.sendMessage(chatId, 'Usage: <code>/reject &lt;REFERENCE_OR_ID&gt; [reason]</code>');
+          return;
+        }
+        const dep = db.getDepositByReference(ref);
+        if (dep) {
+          const res = db.rejectDeposit(dep.id, `tg_${telegramUserId}`, telegramUsername, reason);
+          if (res.success && res.deposit) {
+            await this.sendMessage(chatId, `❌ <b>Deposit Rejected</b>\nRef: <code>${res.deposit.reference}</code>\nUser: <b>${res.deposit.username}</b>\nReason: <i>${reason}</i>`);
+          } else {
+            await this.sendMessage(chatId, `❌ Failed: ${res.error}`);
+          }
+          return;
+        }
+        const wth = db.getWithdrawalByReference(ref);
+        if (wth) {
+          const res = await db.rejectWithdrawal(wth.id, `tg_${telegramUserId}`, telegramUsername, reason);
+          if (res.success && res.withdrawal) {
+            await this.sendMessage(chatId, `🔄 <b>Withdrawal Rejected & Refunded</b>\nRef: <code>${res.withdrawal.reference}</code>\nUser: <b>${res.withdrawal.username}</b>\nRefunded: <b>₹${res.withdrawal.amount.toFixed(2)}</b>\nReason: <i>${reason}</i>`);
+          } else {
+            await this.sendMessage(chatId, `❌ Failed: ${res.error}`);
+          }
+          return;
+        }
+        await this.sendMessage(chatId, `❌ Transaction <code>${ref}</code> not found.`);
+        break;
+      }
+
+      case '/balance': {
+        if (!isAuthorizedAdmin) {
+          await this.sendMessage(chatId, '⛔ Unauthorized.');
+          return;
+        }
+        const query = args[0]?.trim();
+        if (!query) {
+          await this.sendMessage(chatId, 'Usage: <code>/balance &lt;phone_or_username&gt;</code>');
+          return;
+        }
+        const user = db.getUserByIdentifier(query);
+        if (!user) {
+          await this.sendMessage(chatId, `❌ User not found with identifier <code>${query}</code>.`);
+          return;
+        }
+        const recentLedger = db.getLedger(5, user.id);
+        let ledgerLines = recentLedger.map((l) => `• ${l.type}: ${l.amount >= 0 ? '+' : ''}₹${l.amount.toFixed(2)} (${new Date(l.createdAt).toLocaleTimeString()})`).join('\n') || 'None';
+        await this.sendMessage(
+          chatId,
+          `👤 <b>PILOT WALLET DETAILS</b>\n\n` +
+          `• Username: <b>${user.username}</b>\n` +
+          `• Phone Number: <code>${user.phoneNumber || 'N/A'}</code>\n` +
+          `• Current Balance: <b>₹${user.balance.toFixed(2)}</b>\n` +
+          `• Status: <b>${user.status.toUpperCase()}</b>\n` +
+          `• Registered: <code>${new Date(user.createdAt).toLocaleDateString()}</code>\n\n` +
+          `<b>Recent Ledger:</b>\n${ledgerLines}`
+        );
+        break;
+      }
+
+      case '/setmax': {
+        if (!isAuthorizedAdmin) {
+          await this.sendMessage(chatId, '⛔ Unauthorized.');
+          return;
+        }
+        const multStr = args[0]?.trim();
+        const mult = parseFloat(multStr);
+        if (isNaN(mult) || mult < 1.05 || mult > 100.0) {
+          await this.sendMessage(chatId, 'Usage: <code>/setmax &lt;multiplier&gt;</code> (between 1.05 and 100.00, e.g. <code>/setmax 2.00</code>)');
+          return;
+        }
+        const updated = db.updateConfig({ maxMultiplier: Number(mult.toFixed(2)) }, `tg_${telegramUserId}`, telegramUsername, `Max multiplier updated to ${mult.toFixed(2)}x via Telegram`);
+        await this.sendMessage(chatId, `⚙️ <b>Max Multiplier Updated:</b> <b>${updated.maxMultiplier.toFixed(2)}x</b>`);
+        break;
+      }
 
       default:
         await this.sendMessage(
@@ -731,13 +908,14 @@ export class TelegramBotService {
       help +=
         `\n👑 <b>Administrator Financial & Control Commands:</b>\n` +
         `• <code>/deposits</code> - View pending UPI deposit requests\n` +
-        `• <code>/approvedep &lt;ref&gt;</code> - Approve deposit & credit ledger\n` +
-        `• <code>/rejectdep &lt;ref&gt; &lt;reason&gt;</code> - Reject deposit\n` +
         `• <code>/withdrawals</code> - View pending withdrawal requests\n` +
-        `• <code>/approvewth &lt;ref&gt; &lt;UTR&gt;</code> - Mark withdrawal paid\n` +
-        `• <code>/rejectwth &lt;ref&gt; &lt;reason&gt;</code> - Reject withdrawal & refund\n` +
+        `• <code>/approve &lt;ref&gt;</code> - Approve deposit or payout\n` +
+        `• <code>/reject &lt;ref&gt; &lt;reason&gt;</code> - Reject transaction & refund\n` +
+        `• <code>/users</code> - List recent registered pilots & balances\n` +
+        `• <code>/balance &lt;phone/user&gt;</code> - Check player balance & history\n` +
+        `• <code>/stats</code> - Live ledger, turnover, & server metrics\n` +
+        `• <code>/setmax &lt;mult&gt;</code> - Change max crash cap (e.g. 2.00)\n` +
         `• <code>/tx &lt;ref&gt;</code> - Inspect transaction details\n` +
-        `• <code>/systemstatus</code> - Live ledger & memory metrics\n` +
         `• <code>/pausegame</code> - Pause new rounds\n` +
         `• <code>/resumegame</code> - Resume game loop\n` +
         `• <code>/maintenance</code> - Toggle maintenance mode\n`;

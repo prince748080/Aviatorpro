@@ -28,9 +28,14 @@ export class GameEngine {
   private stateTimer: NodeJS.Timeout | null = null;
   private isRunningLoop: boolean = false;
   private activeBets: Map<string, Bet> = new Map(); // betId -> Bet
+  private onCashoutCallback: ((bet: Bet, username: string, multiplier: number, amount: number) => void) | null = null;
 
   constructor() {
     // Engine starts when start() is invoked
+  }
+
+  public setOnCashoutCallback(cb: (bet: Bet, username: string, multiplier: number, amount: number) => void) {
+    this.onCashoutCallback = cb;
   }
 
   public attachWebSocketServer(wss: WebSocketServer) {
@@ -473,6 +478,14 @@ export class GameEngine {
       cashedMultiplier: effectiveMultiplier,
       cashedAmount,
     });
+
+    if (this.onCashoutCallback) {
+      try {
+        this.onCashoutCallback(bet, bet.username, effectiveMultiplier, cashedAmount);
+      } catch (cbErr) {
+        console.error('Error invoking onCashoutCallback:', cbErr);
+      }
+    }
 
     return {
       success: true,
